@@ -3,14 +3,285 @@
 <head>
     <meta charset="UTF-8">
     <title>Welcome, what site would you like to scrape?</title>
-</head>
-<body>
 
-<form action = "http://127.0.0.1:8081/get_page" method = "POST">
-    Website: <input type = "text" name = "webAddress">  <br>
-    Save Directory: <input type = "text" name = "saveDirName"> <br>
-    <input type = "submit" value = "Submit">
-</form>
+    <script>
+      function showElement(elementId, showing)
+      {
+         var elem = document.getElementById(elementId)
+
+         if (elem)
+         {
+            elem.hidden = !showing
+         }
+      }
+    </script>
+</head>
+
+<body onload='onBodyLoad'>
+<script>
+   currentScrapePageUrl = ''
+   currentScrapeConfig = {anchorClass:'', hrefRegex:'', saveDirName:'scraped'}
+
+   scrapedFiles = []
+
+   analyzed = false
+
+   // -------------------------------------------------------------------------
+   function resetPage()
+   {
+      analyzed = false
+
+      showElement('analyzingTextId', false)
+      showElement('scrapingTextId', false)
+      showElement('analyzeResultsDivId', false)
+      showElement('scrapeResultsDivId', false)
+
+      showElement('scrapeConfigDivId', true)
+      analyzeButtonEl = document.getElementById('analyzeButtonId')
+      analyzeButtonEl.disabled = false
+
+      clearFileList()
+   }
+
+   // -------------------------------------------------------------------------
+   function clearFileList()
+   {
+      filesListEl = document.getElementById('filesListId')
+      var dupNode = filesListEl.cloneNode(false);
+      filesListEl.parentNode.replaceChild(dupNode, filesListEl)
+   }
+
+   // -------------------------------------------------------------------------
+   function analyzePage(pageAddress, scrapeConfig, callback)
+   {
+      var POSTReq = new XMLHttpRequest();
+      var url = '/analyze_page';
+      var params = 'pageAddress=' + pageAddress;
+      params += '&anchorClass=' + scrapeConfig['anchorClass']
+      params += '&hrefRegex=' + scrapeConfig['hrefRegex']
+
+      POSTReq.open("POST", url, true);
+
+      //Send the proper header information along with the request
+      POSTReq.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+
+      POSTReq.onreadystatechange = function()
+      {//Call a function when the state changes.
+          if(POSTReq.readyState == 4 && POSTReq.status == 200)
+          {
+            callback(POSTReq.responseText)
+          }
+      }
+      POSTReq.onerror = function()
+      {
+         resetPage()
+         alert(`error analyzing page '${pageAddress}'`)
+      }
+
+      POSTReq.send(params);
+   }
+
+   // -------------------------------------------------------------------------
+   function scrapePage(pageAddress, scrapeConfig, callback)
+   {
+      var POSTReq = new XMLHttpRequest();
+      var url = '/scrape_page';
+      var params = 'pageAddress=' + pageAddress;
+
+      for (prop in scrapeConfig)
+      {
+         if (scrapeConfig.hasOwnProperty(prop))
+         {
+            params += `&${prop}=${scrapeConfig[prop]}`
+         }
+      }
+
+      POSTReq.open("POST", url, true);
+
+      //Send the proper header information along with the request
+      POSTReq.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+
+      POSTReq.onreadystatechange = function()
+      {//Call a function when the state changes.
+          if(POSTReq.readyState == 4 && POSTReq.status == 200)
+          {
+            callback(POSTReq.responseText)
+          }
+      }
+      POSTReq.onerror = function()
+      {
+         resetPage()
+         alert(`error scraping page '${pageAddress}'`)
+      }
+
+      POSTReq.send(params);
+   }
+
+   // -------------------------------------------------------------------------
+   function onBodyLoad()
+   {
+      resetPage()
+   }
+
+   // -------------------------------------------------------------------------
+   function onAnalyzeButton()
+   {
+      var scrapePageUrlEl = document.getElementById('scrapePageUrlInputId')
+      currentScrapePageUrl = scrapePageUrlEl.value
+
+      if ('' != currentScrapePageUrl)
+      {
+         resultsDivEl = document.getElementById('analyzeResultsDivId')
+         resultsDivEl.hidden = true
+         analyzingEl = document.getElementById('analyzingTextId')
+         analyzingEl.hidden = false
+
+         var anchorClassEl = document.getElementById('scrapeAnchorClassId')
+         currentScrapeConfig['anchorClass'] = anchorClassEl.value
+
+         var hrefRegexEl = document.getElementById('scrapeHrefRegexId')
+         currentScrapeConfig['hrefRegex'] = hrefRegexEl.value
+
+         console.log(`analyzing page: ${currentScrapePageUrl}`)
+         analyzeButton = document.getElementById('analyzeButtonId')
+         analyzeButton.disabled = true
+
+         analyzePage(currentScrapePageUrl, currentScrapeConfig, onAnalyzeSuccess)
+      }
+      else
+      {
+         alert('You must enter an address')
+      }
+   }
+
+   // -------------------------------------------------------------------------
+   function onAnalyzeSuccess(analyzeResult)
+   {
+      showElement('analyzingTextId', false)
+
+      parsed = JSON.parse(analyzeResult)
+      scrapedFiles = parsed.files
+
+      numFilesEl = document.getElementById('analyzeNumFilesId')
+      numFilesEl.innerHTML = `expected to fetch ${scrapedFiles.length} files`
+
+      showElement('analyzeResultsDivId', true)
+
+      scrapeGoButtonEl = document.getElementById('scrapeGoButtonId')
+      scrapeGoButtonEl.disabled = (scrapedFiles.length <= 0)
+
+      analyzeButton = document.getElementById('analyzeButtonId')
+      analyzeButton.disabled = false
+
+      clearFileList()
+
+      if (scrapedFiles.length > 0)
+      {
+         filesListEl = document.getElementById('filesListId')
+
+         scrapedFiles.forEach(function(currentFile)
+         {
+            listItem = document.createElement('li')
+
+            listItem.innerHTML = currentFile
+            filesListEl.appendChild(listItem)
+         })
+      }
+
+      analyzed = true
+   }
+
+   // -------------------------------------------------------------------------
+   function onScrapeFilesButton()
+   {
+      showElement('analyzeResultsDivId', false)
+      showElement('scrapingTextId', true)
+
+      batchSizeEl = document.getElementById('batchSizeId')
+      currentScrapeConfig.batchSize = batchSizeEl.value
+      console.log(`sending batch size: ${currentScrapeConfig.batchSize}`)
+
+      scrapePage(currentScrapePageUrl, currentScrapeConfig, onScrapeSuccess)
+   }
+
+   // -------------------------------------------------------------------------
+   function onCancelScrapeButton()
+   {
+      resetPage()
+   }
+
+   // -------------------------------------------------------------------------
+   function onScrapeSuccess(scrapeResult)
+   {
+      showElement('scrapingTextId', false)
+
+      resultObj = JSON.parse(scrapeResult)
+
+      if (resultObj.error && resultObj.error != '')
+      {
+         alert(`error: ${resultObj.error}`)
+      }
+      else
+      {
+         resultTextEl = document.getElementById('scrapeResultsTextId')
+         resultTextEl.innerHTML = `scraping ${resultObj.numFiles} files`
+
+         showElement('scrapeResultsDivId', true)
+      }
+   }
+
+   // -------------------------------------------------------------------------
+   function onScrapeConfigChanged()
+   {
+      if (analyzed)
+      {
+         resetPage()
+      }
+   }
+
+   // -------------------------------------------------------------------------
+   function onSaveDirNameChanged()
+   {
+      saveDirNameEl = document.getElementById('saveDirNameId')
+
+      currentScrapeConfig.saveDirName = saveDirNameEl.value
+   }
+
+</script>
+
+<div id='scrapeConfigDivId'>
+   <span>page address:</span>
+   <input type = 'text' id='scrapePageUrlInputId' size='80' placeholder='enter an address' oninput='onScrapeConfigChanged()'>
+   <span>anchor class:</span>
+   <input type='text' id='scrapeAnchorClassId' placeholder='enter class name' oninput='onScrapeConfigChanged()'>
+   <span>href regex:</span>
+   <input type='text' id='scrapeHrefRegexId' placeholder='enter href regex' oninput='onScrapeConfigChanged()'><br><br>
+   <span>ouput folder:</span>
+   <input type='text' id='saveDirNameId' placeholder='default:scraped' oninput='onSaveDirNameChanged()'>
+   <span>batch size:</span>
+   <input type='number' id='batchSizeId' value='0' min='0'><br>
+   <button id='analyzeButtonId' onclick='onAnalyzeButton()'>Analyze</button>
+</div>
+
+<p id='analyzingTextId' hidden>
+   analyzing...
+</p>
+<p id='scrapingTextId' hidden>
+   scraping...
+</p>
+
+<div id='analyzeResultsDivId' hidden>
+   <h3>analyzation results:</h3>
+   <p id='analyzeNumFilesId'>n/a</p>
+   <button id='scrapeGoButtonId' onclick='onScrapeFilesButton()' disabled='true'>Go...</button>
+   <button onclick='onCancelScrapeButton()'>Cancel</button>
+   <ol id='filesListId'>
+   </ol>
+</div>
+
+<div id='scrapeResultsDivId' hidden>
+   <p id='scrapeResultsTextId'>n/a</p>
+</div>
 
 </body>
 </html>
