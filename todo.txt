@@ -1,0 +1,2 @@
+-could really use a package.json
+-really need to disable analyze button while scraping

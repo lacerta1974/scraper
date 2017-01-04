@@ -15,9 +15,15 @@
          }
       }
     </script>
+
+    <script src='socket.io.js'></script>
+    <script>
+       var socket = io()
+    </script>
 </head>
 
 <body onload='onBodyLoad'>
+
 <script>
    currentScrapePageUrl = ''
    currentScrapeConfig = {anchorClass:'', hrefRegex:'', saveDirName:'scraped'}
@@ -26,15 +32,27 @@
 
    analyzed = false
 
+   socket.on('status', function(status)
+   {
+      updateProgress(status)
+      console.log('got status')
+   });
+
+   socket.on('done', function(status)
+   {
+      console.log('done')
+      status.done = true
+      updateProgress(status)
+   });
+
    // -------------------------------------------------------------------------
    function resetPage()
    {
       analyzed = false
 
       showElement('analyzingTextId', false)
-      showElement('scrapingTextId', false)
       showElement('analyzeResultsDivId', false)
-      showElement('scrapeResultsDivId', false)
+      showElement('scrapeProgressDivId', false)
 
       showElement('scrapeConfigDivId', true)
       analyzeButtonEl = document.getElementById('analyzeButtonId')
@@ -213,20 +231,33 @@
    // -------------------------------------------------------------------------
    function onScrapeSuccess(scrapeResult)
    {
-      showElement('scrapingTextId', false)
-
       resultObj = JSON.parse(scrapeResult)
 
       if (resultObj.error && resultObj.error != '')
       {
          alert(`error: ${resultObj.error}`)
+         document.getElementById('scrapeProgressTextId').innerHTML = `${resultObj.error}`
       }
       else
       {
-         resultTextEl = document.getElementById('scrapeResultsTextId')
-         resultTextEl.innerHTML = `scraping ${resultObj.numFiles} files`
+         showElement('scrapeProgressDivId', true)
+         updateProgress(resultObj)
+      }
+   }
 
-         showElement('scrapeResultsDivId', true)
+   // -------------------------------------------------------------------------
+   function updateProgress(status)
+   {
+      // batch: X/N files:Z
+      resultTextEl = document.getElementById('scrapeProgressTextId')
+
+      if (status.hasOwnProperty('done'))
+      {
+         resultTextEl.innerHTML = `done: ${status.numScrapedFiles} files scraped`
+      }
+      else
+      {
+         resultTextEl.innerHTML = `scraping... batch: ${status.currentBatch}/${status.totalBatches}\nfiles:${status.numScrapedFiles}:${status.totalFiles}`
       }
    }
 
@@ -266,9 +297,6 @@
 <p id='analyzingTextId' hidden>
    analyzing...
 </p>
-<p id='scrapingTextId' hidden>
-   scraping...
-</p>
 
 <div id='analyzeResultsDivId' hidden>
    <h3>analyzation results:</h3>
@@ -279,8 +307,8 @@
    </ol>
 </div>
 
-<div id='scrapeResultsDivId' hidden>
-   <p id='scrapeResultsTextId'>n/a</p>
+<div id='scrapeProgressDivId' hidden>
+   <p id='scrapeProgressTextId'>n/a</p>
 </div>
 
 </body>

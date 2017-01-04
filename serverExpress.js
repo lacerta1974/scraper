@@ -1,5 +1,6 @@
 var express = require('express');
 var app = express();
+
 var bodyParser = require('body-parser');
 var request = require('request');
 var c = require('cheerio');
@@ -9,9 +10,26 @@ var path = require('path');
 // Create application/x-www-form-urlencoded parser
 var urlencodedParser = bodyParser.urlencoded({ extended: false })
 
+// -----------------------------------------------------------------------------
+// setups
 app.use(express.static('public'));
 app.set('view engine', 'pug')
 app.set('views',  __dirname + '/views')
+
+var server = app.listen(8081, function ()
+{
+    var host = server.address().address
+    var port = server.address().port
+
+    console.log("Example app listening at http://%s:%s", host, port)
+})
+
+var io = require('socket.io')(server);
+
+io.on('connection', function(socket)
+{
+   console.log('connection')
+})
 
 // -----------------------------------------------------------------------------
 app.get(['/index.html', '/'], function (req, res)
@@ -193,8 +211,11 @@ app.post('/scrape_page', urlencodedParser, function(req, res)
          if (scrapedFiles.length > 0)
          {
             var numScrapedFiles = 0
+            var currentBatchNum = 0
+            var totalFiles = scrapedFiles.length
             var numInProgress = 0
             var batches = toBatches(scrapedFilesList, batchSize)
+            var totalBatches = batches.length
 
             // ------------------------------------
             function issueBatch(batch)
@@ -203,8 +224,7 @@ app.post('/scrape_page', urlencodedParser, function(req, res)
                {
                   // to prepend files with number
                   // var numTextPrefix = `_NUM_${fileSequence++}_`
-                  var numTextPrefix = '
-                  '
+                  var numTextPrefix = ``
                   var filename = getBaseName(currentFile);
                   var fullPath = dirname + numTextPrefix + filename;
                   request(currentFile).pipe(fs.createWriteStream(fullPath).on('close', fileDoneCallback));
@@ -221,16 +241,25 @@ app.post('/scrape_page', urlencodedParser, function(req, res)
                // current batch done?
                if (numInProgress == 0)
                {
+                  currentBatchNum += 1
                   // remaining batches?
                   if (batches.length > 0)
                   {
                      console.log(`issuing next batch...`)
                      currentBatch = batches.pop()
                      issueBatch(currentBatch)
+                     io.emit('status', {  totalFiles:totalFiles,
+                                          numScrapedFiles:numScrapedFiles,
+                                          totalBatches:totalBatches,
+                                          currentBatch:currentBatchNum });
                   }
                   else
                   {
                      console.log(`Done, ${numScrapedFiles} files scraped`)
+                     io.emit('done', {  totalFiles:totalFiles,
+                                          numScrapedFiles:numScrapedFiles,
+                                          totalBatches:totalBatches,
+                                          currentBatch:currentBatchNum });
                   }
                }
             } // end fileDoneCallback
@@ -238,13 +267,18 @@ app.post('/scrape_page', urlencodedParser, function(req, res)
             // --- begin ---
             // issue first batch
             firstBatch = batches.pop()
+            currentBatch = 1
             issueBatch(firstBatch)
-            res.send({numFiles:scrapedFilesList.length,error:''})
+            // return a status object
+            res.send({totalFiles:totalFiles,
+                     numScrapedFiles:0,
+                     totalBatches:totalBatches,
+                     currentBatch:1})
          } // end if scraped files length > 0
          else
          {
             console.log('no files found to scrape')
-            res.send({numFiles:0, error:'no files found'})
+            res.send({error:'no files found to scrape', numFiles:0})
          }
       } // end if status 200
    })  // end request callback
@@ -267,11 +301,3 @@ function getBaseName (fileuri)
     var path = require('path');
     return path.basename(fileuri);
 }
-
-var server = app.listen(8081, function ()
-{
-    var host = server.address().address
-    var port = server.address().port
-
-    console.log("Example app listening at http://%s:%s", host, port)
-})
